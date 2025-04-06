@@ -217,7 +217,6 @@ void q_reverseK(struct list_head *head, int k)
     // https://leetcode.com/problems/reverse-nodes-in-k-group/
     if (!head || k <= 1)
         return;
-
     struct list_head *curr = head->next;
 
     while (curr != head) {
@@ -241,9 +240,6 @@ void q_reverseK(struct list_head *head, int k)
             next_group_start = next_group_start->next;
         }
 
-        // Save the nodes before and after the group
-        struct list_head *prev_node = group_start->prev;
-
         // Reverse the nodes in the group
         struct list_head *prev = next_group_start;
         for (int i = 0; i < k; i++) {
@@ -254,9 +250,6 @@ void q_reverseK(struct list_head *head, int k)
             curr = tmp;
         }
 
-        // Connect the reversed group to the rest of the list
-        prev_node->next = prev;
-        prev->prev = prev_node;
         group_start->next = next_group_start;
         next_group_start->prev = group_start;
 
@@ -266,22 +259,109 @@ void q_reverseK(struct list_head *head, int k)
 }
 
 /* Sort elements of queue in ascending/descending order */
-void q_sort(struct list_head *head, bool descend) {}
+void q_sort(struct list_head *head, bool descend)
+{
+    if (!head || list_empty(head) || list_is_singular(head))
+        return;
+
+    // Use insertion sort algorithm for the linked list
+    struct list_head *curr = head->next->next;  // Start with the second element
+
+    while (curr != head) {
+        struct list_head *next = curr->next;  // Save next before we move curr
+        const element_t *curr_elem = list_entry(curr, element_t, list);
+        struct list_head *pos = curr->prev;
+        bool inserted = false;
+
+        // Find position where current element should be inserted
+        while (pos != head) {
+            const element_t *pos_elem = list_entry(pos, element_t, list);
+            int cmp = strcmp(curr_elem->value, pos_elem->value);
+
+            // For descending order: larger values come first
+            // For ascending order: smaller values come first
+            if ((descend && cmp < 0) || (!descend && cmp > 0)) {
+                // Insert after this position
+                if (pos != curr->prev) {
+                    list_move(curr, pos);  // Remove curr and add after pos
+                    inserted = true;
+                }
+                break;
+            }
+            pos = pos->prev;
+        }
+
+        // If we reached the head and still need to insert at the beginning
+        if (!inserted && pos == head && curr->prev != head) {
+            list_move(curr, head);  // Move to the beginning of the list
+        }
+
+        curr = next;  // Move to the next element
+    }
+}
 
 /* Remove every node which has a node with a strictly less value anywhere to
  * the right side of it */
 int q_ascend(struct list_head *head)
 {
-    // https://leetcode.com/problems/remove-nodes-from-linked-list/
-    return 0;
+    if (!head || list_empty(head))
+        return 0;
+
+    struct list_head *curr = head->prev;
+
+    // Always keep the last node
+    const element_t *last_kept = list_entry(curr, element_t, list);
+    curr = curr->prev;
+
+    while (curr != head) {
+        element_t *curr_elem = list_entry(curr, element_t, list);
+        struct list_head *prev = curr->prev;
+
+        if (strcmp(curr_elem->value, last_kept->value) < 0) {
+            // Keep it
+            last_kept = curr_elem;
+        } else {
+            // Remove it
+            list_del(curr);
+            free(curr_elem->value);
+            free(curr_elem);
+        }
+
+        curr = prev;
+    }
+
+    return q_size(head);
 }
+
 
 /* Remove every node which has a node with a strictly greater value anywhere to
  * the right side of it */
 int q_descend(struct list_head *head)
 {
     // https://leetcode.com/problems/remove-nodes-from-linked-list/
-    return 0;
+    if (!head || list_empty(head))
+        return 0;
+    struct list_head *curr = head->prev;
+    // Always keep the last node
+    const element_t *last_kept = list_entry(curr, element_t, list);
+    curr = curr->prev;
+    while (curr != head) {
+        element_t *curr_elem = list_entry(curr, element_t, list);
+        struct list_head *prev = curr->prev;
+
+        if (strcmp(curr_elem->value, last_kept->value) > 0) {
+            // Keep it
+            last_kept = curr_elem;
+        } else {
+            // Remove it
+            list_del(curr);
+            free(curr_elem->value);
+            free(curr_elem);
+        }
+
+        curr = prev;
+    }
+    return q_size(head);
 }
 
 /* Merge all the queues into one sorted queue, which is in ascending/descending
@@ -289,5 +369,30 @@ int q_descend(struct list_head *head)
 int q_merge(struct list_head *head, bool descend)
 {
     // https://leetcode.com/problems/merge-k-sorted-lists/
-    return 0;
+    if (!head || list_empty(head))
+        return 0;
+
+    struct list_head *curr = head->next;
+    queue_contex_t *first_ctx = list_entry(curr, queue_contex_t, chain);
+    struct list_head *first_queue = first_ctx->q;
+    curr = curr->next;
+
+    while (curr != head) {
+        queue_contex_t *next_ctx = list_entry(curr, queue_contex_t, chain);
+        struct list_head *next_queue = next_ctx->q;
+
+        if (!next_queue || list_empty(next_queue)) {
+            curr = curr->next;
+            continue;
+        }
+
+        list_splice_tail_init(next_queue, first_queue);
+        q_sort(first_queue, descend);
+        first_ctx->size += next_ctx->size;
+        next_ctx->size = 0;
+
+
+        curr = curr->next;
+    }
+    return first_ctx->size;
 }
