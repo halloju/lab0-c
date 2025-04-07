@@ -60,12 +60,10 @@ bool q_insert_tail(struct list_head *head, char *s)
 /* Remove an element from head of queue */
 element_t *q_remove_head(struct list_head *head, char *sp, size_t bufsize)
 {
-    if (!head || !sp || bufsize == 0)
+    if (!head || list_empty(head) || !sp || bufsize == 0)
         return NULL;
 
     struct list_head *li = head->next;
-    if (li == head)
-        return NULL;
 
     element_t *e = list_entry(li, element_t, list);
     strncpy(sp, e->value,
@@ -77,12 +75,10 @@ element_t *q_remove_head(struct list_head *head, char *sp, size_t bufsize)
 /* Remove an element from tail of queue */
 element_t *q_remove_tail(struct list_head *head, char *sp, size_t bufsize)
 {
-    if (!head || !sp || bufsize == 0)
+    if (!head || list_empty(head) || !sp || bufsize == 0)
         return NULL;
 
     struct list_head *li = head->prev;
-    if (li == head)
-        return NULL;
 
     element_t *e = list_entry(li, element_t, list);
     strncpy(sp, e->value,
@@ -109,13 +105,13 @@ int q_size(struct list_head *head)
 bool q_delete_mid(struct list_head *head)
 {
     // https://leetcode.com/problems/delete-the-middle-node-of-a-linked-list/
-    if (!head)
+    if (!head || list_empty(head))
         return false;
 
-    struct list_head *slow = head;
-    struct list_head *fast = head;
+    struct list_head *slow = head->next;
+    struct list_head *fast = head->next;
 
-    while (fast->next != head && fast->next->next != head) {
+    while (fast != head && fast->next != head) {
         slow = slow->next;
         fast = fast->next->next;
     }
@@ -271,29 +267,27 @@ void q_sort(struct list_head *head, bool descend)
         struct list_head *next = curr->next;  // Save next before we move curr
         const element_t *curr_elem = list_entry(curr, element_t, list);
         struct list_head *pos = curr->prev;
-        bool inserted = false;
 
         // Find position where current element should be inserted
         while (pos != head) {
             const element_t *pos_elem = list_entry(pos, element_t, list);
             int cmp = strcmp(curr_elem->value, pos_elem->value);
 
-            // For descending order: larger values come first
-            // For ascending order: smaller values come first
-            if ((descend && cmp < 0) || (!descend && cmp > 0)) {
-                // Insert after this position
-                if (pos != curr->prev) {
-                    list_move(curr, pos);  // Remove curr and add after pos
-                    inserted = true;
-                }
+            // For stable sorting:
+            // In descending order: continue if curr > pos (or stop when curr <=
+            // pos) In ascending order: continue if curr < pos (or stop when
+            // curr >= pos)
+            if ((descend && cmp > 0) || (!descend && cmp < 0)) {
+                pos = pos->prev;
+            } else {
                 break;
             }
-            pos = pos->prev;
         }
 
-        // If we reached the head and still need to insert at the beginning
-        if (!inserted && pos == head && curr->prev != head) {
-            list_move(curr, head);  // Move to the beginning of the list
+        // Insert the element after the found position
+        if (pos != curr->prev) {
+            list_del(curr);
+            list_add(curr, pos);
         }
 
         curr = next;  // Move to the next element
