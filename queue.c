@@ -66,8 +66,11 @@ element_t *q_remove_head(struct list_head *head, char *sp, size_t bufsize)
     struct list_head *li = head->next;
 
     element_t *e = list_entry(li, element_t, list);
-    strncpy(sp, e->value,
-            bufsize); /*Not sure why we need this, but it is in the argu*/
+    size_t value_len = strlen(e->value);
+    size_t copy_size = (value_len + 1 < bufsize) ? value_len + 1 : bufsize;
+    strncpy(sp, e->value, copy_size);
+    sp[copy_size - 1] = '\0';  // Ensure null termination
+
     list_del(li);
     return e;
 }
@@ -210,41 +213,41 @@ void q_reverse(struct list_head *head)
 /* Reverse the nodes of the list k at a time */
 void q_reverseK(struct list_head *head, int k)
 {
-    // https://leetcode.com/problems/reverse-nodes-in-k-group/
     if (!head || list_empty(head) || k <= 1)
         return;
+
+    if (q_size(head) < k)
+        return;
+
     struct list_head *curr = head->next;
 
     while (curr != head) {
         // Check if we have k nodes ahead
         struct list_head *grp_end = curr;
-        int count = 0;
-        for (int i = 0; i < k - 1; i++) {  // k-1 steps to find the kth node
-            if (grp_end == head)
-                break;
+        int count = 1;  // count starts at 1 because curr is included
+
+        for (int i = 1; i < k && grp_end != head; i++) {
             grp_end = grp_end->next;
             count++;
         }
 
-        if (count <
-            k - 1)  // Need at least k-1 steps (k nodes total including curr)
+        if (count < k || grp_end == head)
             break;
 
         struct list_head *next_group_start = grp_end->next;
-        struct list_head *grp_start = curr->prev;  // The node before our group
+        struct list_head *grp_prev = curr->prev;
 
-        // Reverse the nodes in the group
-        for (int i = 0; i < k; i++) {
-            struct list_head *next =
-                curr->next;              // Save next before we move curr
-            list_move(curr, grp_start);  // Move curr right after grp_start
-            curr = next;  // Move to the next node in original order
+        while (curr != next_group_start) {
+            struct list_head *next = curr->next;
+            list_move(curr, grp_prev);  // Always move after grp_prev
+            curr = next;
         }
 
         // Move to the next group
         curr = next_group_start;
     }
 }
+
 
 /* Sort elements of queue in ascending/descending order */
 void q_sort(struct list_head *head, bool descend)
