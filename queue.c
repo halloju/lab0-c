@@ -19,14 +19,10 @@ void q_free(struct list_head *head)
     if (!head)
         return;
 
-    struct list_head *curr, *safe;
+    element_t *curr, *safe;
 
-    list_for_each_safe(curr, safe, head) {
-        element_t *e = list_entry(curr, element_t, list);
-        list_del(curr);
-        if (e->value)
-            free(e->value);
-        free(e);
+    list_for_each_entry_safe(curr, safe, head, list) {
+        q_release_element(curr);
     }
     free(head);
 }
@@ -38,8 +34,15 @@ bool q_insert_head(struct list_head *head, char *s)
         return false;
 
     element_t *e = malloc(sizeof(element_t));
+    if (!e)
+        return false;
 
     e->value = strdup(s);
+    if (!e->value) {
+        free(e);
+        return false;
+    }
+
     list_add(&e->list, head);
     return true;
 }
@@ -51,8 +54,14 @@ bool q_insert_tail(struct list_head *head, char *s)
         return false;
 
     element_t *e = malloc(sizeof(element_t));
+    if (!e)
+        return false;
 
     e->value = strdup(s);
+    if (!e->value) {
+        free(e);
+        return false;
+    }
     list_add_tail(&e->list, head);
     return true;
 }
@@ -60,34 +69,31 @@ bool q_insert_tail(struct list_head *head, char *s)
 /* Remove an element from head of queue */
 element_t *q_remove_head(struct list_head *head, char *sp, size_t bufsize)
 {
-    if (!head || list_empty(head) || !sp || bufsize == 0)
+    if (!head || list_empty(head))
         return NULL;
 
-    struct list_head *li = head->next;
+    element_t *entry = list_first_entry(head, element_t, list);
+    if (sp && bufsize) {
+        strncpy(sp, entry->value, bufsize - 1);
+        sp[bufsize - 1] = '\0';
+    }
 
-    element_t *e = list_entry(li, element_t, list);
-    size_t value_len = strlen(e->value);
-    size_t copy_size = (value_len + 1 < bufsize) ? value_len + 1 : bufsize;
-    strncpy(sp, e->value, copy_size);
-    sp[copy_size - 1] = '\0';  // Ensure null termination
-
-    list_del(li);
-    return e;
+    list_del_init(&entry->list);
+    return entry;
 }
 
 /* Remove an element from tail of queue */
 element_t *q_remove_tail(struct list_head *head, char *sp, size_t bufsize)
 {
-    if (!head || list_empty(head) || !sp || bufsize == 0)
+    if (!head || list_empty(head))
         return NULL;
-
-    struct list_head *li = head->prev;
-
-    element_t *e = list_entry(li, element_t, list);
-    strncpy(sp, e->value,
-            bufsize); /*Not sure why we need this, but it is in the argu*/
-    list_del(li);
-    return e;
+    element_t *entry = list_last_entry(head, element_t, list);
+    if (sp && bufsize) {
+        strncpy(sp, entry->value, bufsize - 1);
+        sp[bufsize - 1] = '\0';
+    }
+    list_del_init(&entry->list);
+    return entry;
 }
 
 /* Return number of elements in queue */
@@ -192,7 +198,7 @@ void q_swap(struct list_head *head)
 /* Reverse elements in queue */
 void q_reverse(struct list_head *head)
 {
-    if (!head)
+    if (!head || list_empty(head) || list_is_singular(head))
         return;
 
     struct list_head *curr = head->next;
@@ -255,37 +261,56 @@ void q_sort(struct list_head *head, bool descend)
     if (!head || list_empty(head) || list_is_singular(head))
         return;
 
-    // Use insertion sort algorithm for the linked list
-    struct list_head *curr = head->next->next;  // Start with the second element
+    // Split the list into two halves
+    struct list_head *slow = head->next;
+    struct list_head *fast = head->next;
 
-    while (curr != head) {
-        struct list_head *next = curr->next;  // Save next before we move curr
-        const element_t *curr_elem = list_entry(curr, element_t, list);
-        struct list_head *pos = curr->prev;
-
-        // Find position where current element should be inserted
-        while (pos != head) {
-            const element_t *pos_elem = list_entry(pos, element_t, list);
-            int cmp = strcmp(curr_elem->value, pos_elem->value);
-
-            // For stable sorting:
-            // In descending order: continue if curr > pos (or stop when curr <=
-            // pos) In ascending order: continue if curr < pos (or stop when
-            // curr >= pos)
-            if ((descend && cmp > 0) || (!descend && cmp < 0)) {
-                pos = pos->prev;
-            } else {
-                break;
-            }
-        }
-
-        // Insert the element after the found position
-        if (pos != curr->prev) {
-            list_move(curr, pos);
-        }
-
-        curr = next;  // Move to the next element
+    while (fast != head && fast->next != head) {
+        slow = slow->next;
+        fast = fast->next->next;
     }
+    slow = slow->prev;  // Move slow back to the last node of the first half
+
+    // Create a new list for the second half
+    struct list_head second;
+    INIT_LIST_HEAD(&second);
+
+    // Split the list at the middle point
+    list_cut_position(&second, head, slow);
+
+    // Recursively sort each half
+    q_sort(head, descend);
+    q_sort(&second, descend);
+
+    // Create a temporary list to store merged results
+    struct list_head result;
+    INIT_LIST_HEAD(&result);
+
+    // Merge the sorted halves
+    while (!list_empty(head) && !list_empty(&second)) {
+        const element_t *head_elem = list_entry(head->next, element_t, list);
+        const element_t *second_elem = list_entry(second.next, element_t, list);
+
+        int cmp = strcmp(head_elem->value, second_elem->value);
+        bool should_take_head = descend ? (cmp >= 0) : (cmp < 0);
+
+        if (should_take_head) {
+            list_move_tail(head->next, &result);
+        } else {
+            list_move_tail(second.next, &result);
+        }
+    }
+
+    // Attach remaining elements
+    if (!list_empty(&second))
+        list_splice_tail_init(&second, &result);
+
+    // Move everything back to the original head
+    if (!list_empty(head))
+        list_splice_tail_init(head, &result);
+
+    // Move everything from result back to head
+    list_splice_tail_init(&result, head);
 }
 
 /* Remove every node which has a node with a strictly less value anywhere to
