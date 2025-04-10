@@ -131,7 +131,7 @@ bool q_delete_mid(struct list_head *head)
 bool q_delete_dup(struct list_head *head)
 {
     // https://leetcode.com/problems/remove-duplicates-from-sorted-list-ii/
-    if (!head)
+    if (!head || list_empty(head))
         return false;
 
     struct list_head *curr;
@@ -211,43 +211,35 @@ void q_reverse(struct list_head *head)
 void q_reverseK(struct list_head *head, int k)
 {
     // https://leetcode.com/problems/reverse-nodes-in-k-group/
-    if (!head || k <= 1)
+    if (!head || list_empty(head) || k <= 1)
         return;
     struct list_head *curr = head->next;
 
     while (curr != head) {
         // Check if we have k nodes ahead
-        struct list_head *check = curr;
+        struct list_head *grp_end = curr;
         int count = 0;
-        for (int i = 0; i < k; i++) {
-            if (check == head)
+        for (int i = 0; i < k - 1; i++) {  // k-1 steps to find the kth node
+            if (grp_end == head)
                 break;
-            check = check->next;
+            grp_end = grp_end->next;
             count++;
         }
 
-        if (count < k)
+        if (count <
+            k - 1)  // Need at least k-1 steps (k nodes total including curr)
             break;
 
-        struct list_head *group_start = curr;
-        struct list_head *next_group_start = curr;
-
-        for (int i = 0; i < k; i++) {
-            next_group_start = next_group_start->next;
-        }
+        struct list_head *next_group_start = grp_end->next;
+        struct list_head *grp_start = curr->prev;  // The node before our group
 
         // Reverse the nodes in the group
-        struct list_head *prev = next_group_start;
         for (int i = 0; i < k; i++) {
-            struct list_head *tmp = curr->next;
-            curr->next = prev;
-            prev->prev = curr;
-            prev = curr;
-            curr = tmp;
+            struct list_head *next =
+                curr->next;              // Save next before we move curr
+            list_move(curr, grp_start);  // Move curr right after grp_start
+            curr = next;  // Move to the next node in original order
         }
-
-        group_start->next = next_group_start;
-        next_group_start->prev = group_start;
 
         // Move to the next group
         curr = next_group_start;
@@ -286,8 +278,7 @@ void q_sort(struct list_head *head, bool descend)
 
         // Insert the element after the found position
         if (pos != curr->prev) {
-            list_del(curr);
-            list_add(curr, pos);
+            list_move(curr, pos);
         }
 
         curr = next;  // Move to the next element
